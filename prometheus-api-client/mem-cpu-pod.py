@@ -1,3 +1,7 @@
+#
+# Acceso via libreria directa de openshift
+#
+
 from openshift import client, config
 import pandas as pd
 
