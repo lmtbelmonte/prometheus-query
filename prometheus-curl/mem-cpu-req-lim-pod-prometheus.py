@@ -1,22 +1,14 @@
 import pandas as pd
-import os
 from prometheus_api_client import PrometheusConnect
 
-# cargamos variables de entorno
-# la url /route de prometheus de ocp
-PROMETHEUS = os.environ['PROMETHEUS']
-# Openshift TOKEN
-TOKEN = os.environ['TOKEN']
-
-# Headers para poner el token OAUTH en la llamada
-auth_header = "Authorization: bearer TOKEN"
+# Prometheus server URL
+prometheus_url = "https://prometheus-k8s-openshift-monitoring.apps.cluster-crh57.crh57.sandbox944.opentlc.com/api/v1/query"
 
 # Query to fetch the required metrics
 query = 'kube_pod_container_resource_requests_memory_bytes, kube_pod_container_resource_requests_cpu_cores, kube_pod_container_resource_limits_memory_bytes, kube_pod_container_resource_limits_cpu_cores, container_memory_usage_bytes, container_cpu_usage_seconds_total'
 
-# Connect to Prometheus - 
-# Autenticacion : Aqui podemos poner el header con el token  
-prometheus = PrometheusConnect(url=PROMETHEUS, headers=auth_header)
+# Connect to Prometheus
+prometheus = PrometheusConnect(url=prometheus_url)
 
 # Get the metric data
 data = prometheus.custom_query(query)

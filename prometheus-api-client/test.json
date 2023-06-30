@@ -1,0 +1,10 @@
+
+     avg_over_time(container_memory_usage_bytes{image!="",container!=""}[30d])
+#     kube_pod_container_resource_requests
+#    sum(container_memory_usage_bytes{job="kubelet", image!="", container!="POD"})
+#    sum(container_memory_usage_bytes{job="kubelet", image!=""})
+#        by (container_name, namespace)
+#    /
+#    sum(kube_pod_container_resource_limits_memory_bytes)
+#        by (container_name, namespace)
+
