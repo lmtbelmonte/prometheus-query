@@ -29,29 +29,35 @@ token = os.environ['TOKEN']
 # Funcion para hacer la llamada al API con los parametros 
 
 def fetch_metrics(query):
-    response = requests.get(prometheus_url, params={'query': query}, headers={'Authorization': 'Bearer'+token},verify=False)
+    params = {
+        "query": query
+    }
+    headers={
+        "Authorization": "Bearer "+token
+    }
+    response = requests.get(prometheus_url, params= params, headers=headers, verify=False)
     data = response.json()
-    return data['data']['result']
+    return data["data"]["result"]
 
 def main():
     namespaces = fetch_metrics('label_replace(kube_pod_info, "namespace", "$1", "namespace", "(.*)")')
     all_data = []
-
+    
     for ns in namespaces:
         namespace = ns['metric']['namespace']
 
         # Memory Usage Total and CPU Usage Total by Pods and Containers
-        memory_usage_total_query = f'sum(container_memory_usage_bytes{{namespace="{namespace}"}}) by (pod, container)'
-        cpu_usage_total_query = f'sum(rate(container_cpu_usage_seconds_total{{namespace="{namespace}"}}[1m])) by (pod, container)'
+        memory_usage_total_query = f'sum(container_memory_usage_bytes{{namespace="{namespace}", container!="POD", container!=""}}) by (pod, container)'
+        cpu_usage_total_query = f'sum(rate(container_cpu_usage_seconds_total{{namespace="{namespace}", container!="POD"}}[1m])) by (pod, container)'
 
         memory_usage_total_data = fetch_metrics(memory_usage_total_query)
         cpu_usage_total_data = fetch_metrics(cpu_usage_total_query)
-
+        
         # Memory Requests, CPU Requests, Memory Limits, and CPU Limits by Pods and Containers
-        memory_requests_query = f'sum(kube_pod_container_resource_requests_memory_bytes{{namespace="{namespace}"}}) by (pod, container)'
-        cpu_requests_query = f'sum(kube_pod_container_resource_requests_cpu_cores{{namespace="{namespace}"}}) by (pod, container)'
-        memory_limits_query = f'sum(kube_pod_container_resource_limits_memory_bytes{{namespace="{namespace}"}}) by (pod, container)'
-        cpu_limits_query = f'sum(kube_pod_container_resource_limits_cpu_cores{{namespace="{namespace}"}}) by (pod, container)'
+        memory_requests_query = f'sum(kube_pod_container_resource_requests{{namespace="{namespace}", container!="POD",container!="",resource="memory"}}) by (pod, container)'
+        cpu_requests_query = f'sum(kube_pod_container_resource_requests{{namespace="{namespace}", container!="POD",container!="", resource="cpu"}}) by (pod, container)'
+        memory_limits_query = f'sum(kube_pod_container_resource_limits{{namespace="{namespace}", container!="POD",container!="",resource="memory"}}) by (pod, container)'
+        cpu_limits_query = f'sum(kube_pod_container_resource_limits{{namespace="{namespace}", container!="POD",container!=""resource="cpu"}}) by (pod, container)'
 
         memory_requests_data = fetch_metrics(memory_requests_query)
         cpu_requests_data = fetch_metrics(cpu_requests_query)
@@ -62,7 +68,7 @@ def main():
             pod = data['metric']['pod']
             container = data['metric']['container']
             memory_usage_total = data['value'][1]
-
+            
             # Find corresponding CPU Usage Total
             for cpu_data in cpu_usage_total_data:
                 if cpu_data['metric']['pod'] == pod and cpu_data['metric']['container'] == container:
@@ -82,6 +88,7 @@ def main():
                 memory_limits = 0
 
             for req_data, lim_data in zip(cpu_requests_data, cpu_limits_data):
+                print(f"requests/lim data: {cpu_requests_data}") 
                 if req_data['metric']['pod'] == pod and req_data['metric']['container'] == container:
                     cpu_requests = req_data['value'][1]
                     cpu_limits = lim_data['value'][1]
@@ -91,13 +98,14 @@ def main():
                 cpu_limits = 0
 
             all_data.append([namespace, pod, container, memory_usage_total, cpu_usage_total, memory_requests, memory_limits, cpu_requests, cpu_limits])
-
+           
     # Convert the collected data into a DataFrame
     df = pd.DataFrame(all_data, columns=['Namespace', 'Pod', 'Container', 'Memory Usage Total', 'CPU Usage Total',
                                          'Memory Requests', 'Memory Limits', 'CPU Requests', 'CPU Limits'])
-
     # Write to CSV
-    df.to_csv('metrics_data.csv', index=False)
+    df.to_csv('/tmp/metrics_data.csv', index=False)
+
+#   df.to_excel('/tmp/metrics_data', index=False)
 
 if __name__ == '__main__':
     main()

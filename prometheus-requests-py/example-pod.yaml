@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx
+  labels:
+    application: test-metricas
+spec:
+  containers:
+  - name: nginx
+    image: nginx:1.14.2
+    resources:
+      requests:
+        memory: "512Mi"
+        cpu: 0.5
+      limits:
+        memory: "1Gi"
+        cpu: 1  
+    ports:
+    - containerPort: 80
