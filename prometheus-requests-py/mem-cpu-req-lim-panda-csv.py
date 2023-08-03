@@ -21,15 +21,15 @@ import os
 import pandas as pd
 
 # cargamos la url de la ruta prometheus de la variable de entorno 
-
 prometheus_url = os.environ['PROMETHEUS_URL']
 
 # cargamos la url de la ruta prometheus de la variable de entorno 
-
 token = os.environ['TOKEN']
 
-# Funcion para hacer la llamada al API con los parametros 
+# Contador de progreso basado en los objetos a usar
+count_objetos= 0
 
+# Funcion para hacer la llamada al API con los parametros 
 def fetch_metrics(query):
     params = {
         "query": query
@@ -41,23 +41,20 @@ def fetch_metrics(query):
 
 # Comprobacion de llamada correcta al API 
     if response.status_code == 200:
-         print('Llamada al API correcta')
-    else:
-         print('Error en la llamada API:', response.text)
-    data = response.json()
+       data = response.json()
     return data["data"]["result"]
 
 # Funcion para cargar primero los namespaces y despues las metricas que queremos ejecutar
 def main():
     namespaces = fetch_metrics('label_replace(kube_pod_info, "namespace", "$1", "namespace", "(.*)")')
     all_data = []
-    
+ 
     for ns in namespaces:
         namespace = ns['metric']['namespace']
-
+        
         # Memory Usage Total y CPU Usage Total por Pods/Containers
         memory_usage_total_query = f'sum(container_memory_usage_bytes{{namespace="{namespace}", container!="POD", container!=""}}) by (pod, container)'
-        cpu_usage_total_query = f'sum(rate(container_cpu_usage_seconds_total{{namespace="{namespace}", container!="POD", container!=""}}[30m])) by (pod, container)'
+        cpu_usage_total_query = f'sum(rate(container_cpu_usage_seconds_total{{namespace="{namespace}", container!="POD", container!=""}}[1d])) by (pod, container)'
 
         memory_usage_total_data = fetch_metrics(memory_usage_total_query)
         cpu_usage_total_data = fetch_metrics(cpu_usage_total_query)
@@ -104,15 +101,19 @@ def main():
             else:
                 cpu_requests = 0
                 cpu_limits = 0
+            print(f"Namespace: {namespace}")        
             # Añadimos todo con la funcion append
             all_data.append([namespace, pod, container, memory_usage_total, cpu_usage_total, memory_requests, memory_limits, cpu_requests, cpu_limits])
-           
+            
     # Convertimos la info recogida en un DataFrame
+
     df = pd.DataFrame(all_data, columns=['Namespace', 'Pod', 'Container', 'Memory Usage Total', 'CPU Usage Total',
                                          'Memory Requests', 'Memory Limits', 'CPU Requests', 'CPU Limits'])
+    df2 = df.drop_duplicates()
+
     # Escribimos directamente a CSV y excel
- #   df.to_csv('/tmp/metrics_data.csv', index=False)
-    df.to_excel('/tmp/metrics_data', index=False)
+ 
+    df2.to_excel('/tmp/metrics_data.xlsx', index=False)
 
 if __name__ == '__main__':
     main()
