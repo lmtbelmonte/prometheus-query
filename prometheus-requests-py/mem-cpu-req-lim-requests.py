@@ -19,7 +19,8 @@ token = os.environ['TOKEN']
 
 # Preparamos la query Prometheus 
 query = '''
-sum(kube_pod_container_resource_requests_memory_bytes) by (namespace, pod)
+sum(container_memory_usage_bytes{container!="POD", container!=""}) by (namespace,pod, container)
+# sum(kube_pod_container_resource_requests_memory_bytes) by (namespace, pod)
 #     kube_pod_container_resource_requests
 #    sum(container_memory_usage_bytes{job="kubelet", image!="", container!="POD"})
 #    sum(container_memory_usage_bytes{job="kubelet", image!=""})
@@ -46,7 +47,7 @@ response = requests.get(prometheus_url, params=params, headers=headers, verify=F
 # Parseamos la respuesta a JSON
 data = response.json()
 
-print(f"{query}")
+# print(f"{query}")
 
 # Extraemos los valores de la respuesta
 values = data["data"]["result"]
@@ -56,7 +57,7 @@ metrics_df = pd.DataFrame(columns=["Container", "Namespace", "Memory Usage", "CP
 
 # extraemos los valores de data iterando con values 
 for value in values:
-    container = value["metric"]["container_name"]
+    container = value["metric"]["container"]
     namespace = value["metric"]["namespace"]
     memory_usage = float(value["value"][1])
     cpu_usage = float(value["value"][1])

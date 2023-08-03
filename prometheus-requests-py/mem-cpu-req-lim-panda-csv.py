@@ -15,6 +15,8 @@
 #               Hay que poner el intervalo de tiempo en fecha inicio y fin asi como el step ( en dd,hh, mm, ss) 
 
 import requests
+import urllib3
+urllib3.disable_warnings()
 import os
 import pandas as pd
 
@@ -36,6 +38,12 @@ def fetch_metrics(query):
         "Authorization": "Bearer "+token
     }
     response = requests.get(prometheus_url, params= params, headers=headers, verify=False)
+
+# Comprobacion de llamada correcta al API 
+    if response.status_code == 200:
+         print('Llamada al API correcta')
+    else:
+         print('Error en la llamada API:', response.text)
     data = response.json()
     return data["data"]["result"]
 
@@ -49,7 +57,7 @@ def main():
 
         # Memory Usage Total y CPU Usage Total por Pods/Containers
         memory_usage_total_query = f'sum(container_memory_usage_bytes{{namespace="{namespace}", container!="POD", container!=""}}) by (pod, container)'
-        cpu_usage_total_query = f'sum(rate(container_cpu_usage_seconds_total{{namespace="{namespace}", container!="POD"}}[1m])) by (pod, container)'
+        cpu_usage_total_query = f'sum(rate(container_cpu_usage_seconds_total{{namespace="{namespace}", container!="POD", container!=""}}[30m])) by (pod, container)'
 
         memory_usage_total_data = fetch_metrics(memory_usage_total_query)
         cpu_usage_total_data = fetch_metrics(cpu_usage_total_query)
@@ -58,7 +66,7 @@ def main():
         memory_requests_query = f'sum(kube_pod_container_resource_requests{{namespace="{namespace}", container!="POD",container!="",resource="memory"}}) by (pod, container)'
         cpu_requests_query = f'sum(kube_pod_container_resource_requests{{namespace="{namespace}", container!="POD",container!="", resource="cpu"}}) by (pod, container)'
         memory_limits_query = f'sum(kube_pod_container_resource_limits{{namespace="{namespace}", container!="POD",container!="",resource="memory"}}) by (pod, container)'
-        cpu_limits_query = f'sum(kube_pod_container_resource_limits{{namespace="{namespace}", container!="POD",container!=""resource="cpu"}}) by (pod, container)'
+        cpu_limits_query = f'sum(kube_pod_container_resource_limits{{namespace="{namespace}", container!="POD",container!="",resource="cpu"}}) by (pod, container)'
 
         memory_requests_data = fetch_metrics(memory_requests_query)
         cpu_requests_data = fetch_metrics(cpu_requests_query)
@@ -89,7 +97,6 @@ def main():
                 memory_limits = 0
 
             for req_data, lim_data in zip(cpu_requests_data, cpu_limits_data):
-                print(f"requests/lim data: {cpu_requests_data}") 
                 if req_data['metric']['pod'] == pod and req_data['metric']['container'] == container:
                     cpu_requests = req_data['value'][1]
                     cpu_limits = lim_data['value'][1]
@@ -103,10 +110,9 @@ def main():
     # Convertimos la info recogida en un DataFrame
     df = pd.DataFrame(all_data, columns=['Namespace', 'Pod', 'Container', 'Memory Usage Total', 'CPU Usage Total',
                                          'Memory Requests', 'Memory Limits', 'CPU Requests', 'CPU Limits'])
-    # Escribimos directamente a CSV
-    df.to_csv('/tmp/metrics_data.csv', index=False)
-
-#   df.to_excel('/tmp/metrics_data', index=False)
+    # Escribimos directamente a CSV y excel
+ #   df.to_csv('/tmp/metrics_data.csv', index=False)
+    df.to_excel('/tmp/metrics_data', index=False)
 
 if __name__ == '__main__':
     main()
