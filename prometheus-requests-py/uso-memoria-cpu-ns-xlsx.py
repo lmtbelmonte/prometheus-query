@@ -18,10 +18,10 @@ prometheus_url = os.environ['PROMETHEUS_URL']
 token = os.environ['TOKEN']
 
 # Preparamos la query de % maximo uso en bytes en un periodo de las requests / limits 
-memory_query = f'sum(container_memory_usage_bytes{{namespace!="",container!="POD", container!=""}}) by (namespace,pod, container)'
+memory_query = 'sum(container_memory_usage_bytes{{namespace!="",container!="POD", container!=""}}) by (namespace,pod, container)'
 
 # Preparamos la query de consumo CPU requests / limits 
-cpu_query = f'sum(rate(container_cpu_usage_seconds_total{{namespace!="", container!="POD", container!=""}}[1h])) by (namespace,pod, container)'
+cpu_query = 'sum(rate(container_cpu_usage_seconds_total{{namespace!="", container!="POD", container!=""}}[1h])) by (namespace,pod, container)'
 
 # Recogemos parametros para llamada al api
 params = {
