@@ -16,9 +16,9 @@
 
 import requests
 import urllib3
-
 urllib3.disable_warnings()
 import os
+import time
 import pandas as pd
 
 # cargamos la url de la ruta prometheus de la variable de entorno 
@@ -44,15 +44,6 @@ def fetch_metrics(query):
         data = response.json()
     return data["data"]["result"]
 
-# Contador de progreso basado en los objetos a usar
-count = 0
-
-# Funcion para contar el progreso en namespaaces
-def counter():
-    global count
-    count += 1
-    print("Numero Namespaces: " + str(count))
-    return count
 
 # Namespaces sin Resource Quota
 namespaces_sin_quota_query = f"count by (namespace)(kube_namespace_labels) unless sum by (namespace)(kube_resourcequota)"
@@ -64,14 +55,35 @@ for value in namespaces_sin_quota:
     namespace = value["metric"]["namespace"]
     quota_data.append([namespace])
 
+print("En proceso: Carga de los Namespaces sin quota: " )
+
 # Convertimos la info recogida en un DataFrame
 quotas_df = pd.DataFrame(quota_data, columns=['Namespaces sin Quota'])
+
+# Numero de CPU/cores infrautilizadas en el cluster
+cores_infrautilizadas_query = f'sum((rate(container_cpu_usage_seconds_total{{container!="POD", container!=""}}[30m])- on (namespace, pod, container) group_left avg by (namespace, pod, container) (kube_pod_container_resource_requests{{resource="cpu"}})) * -1 >0)'
+cores_infrautilizadas = fetch_metrics(cores_infrautilizadas_query)
+cores_infrautilizadas_data = []
+
+
+# extraemos los valores de data iterando con values
+for value in cores_infrautilizadas:
+    print(f"Cores infrautilizadas: {value}" )
+    cores = value
+    cores_infrautilizadas_data.append([cores])
+
+print("En proceso: Carga del numero de cores infrautilizadas: " )
+
+
+# Convertimos la info recogida en un DataFrame
+cores_df = pd.DataFrame(cores_infrautilizadas_data, columns=['Numero de cores Infrautilizadas'])
+
 
 # Funcion para cargar primero los namespaces y despues las metricas que queremos ejecutar
 def main():
     namespaces = fetch_metrics('label_replace(kube_pod_info, "namespace", "$1", "namespace", "(.*)")')
-    counter()
     all_data = []
+    print("En proceso: Carga de las metricas CPU/MEM y req/limits")
 
     for ns in namespaces:
         namespace = ns['metric']['namespace']
@@ -134,10 +146,13 @@ def main():
                                          'Memory Requests', 'Memory Limits', 'CPU Requests', 'CPU Limits'])
     df2 = df.drop_duplicates()
 
+    print("En proceso: Creacion y carga de la hoja Excel")
+
     # Escribimos directamente a CSV y excel
     with pd.ExcelWriter('/tmp/metrics_data.xlsx') as writer:
         df2.to_excel(writer, sheet_name='Total Metricas')
         quotas_df.to_excel(writer, sheet_name='Ns sin Quota')
+        cores_df.to_excel(writer, sheet_name='Nº Cores Infrautilizadas')
 
 if __name__ == '__main__':
     main()
