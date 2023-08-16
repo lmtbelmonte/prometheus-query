@@ -68,16 +68,29 @@ cores_infrautilizadas_data = []
 
 # extraemos los valores de data iterando con values
 for value in cores_infrautilizadas:
-    print(f"Cores infrautilizadas: {value}" )
-    cores = value
+    cores = value["value"]
     cores_infrautilizadas_data.append([cores])
 
-print("En proceso: Carga del numero de cores infrautilizadas: " )
-
+print("En proceso: Carga del número de cores infrautilizadas a nivel de cluster " )
 
 # Convertimos la info recogida en un DataFrame
 cores_df = pd.DataFrame(cores_infrautilizadas_data, columns=['Numero de cores Infrautilizadas'])
 
+# Numero de CPU/cores infrautilizadas por namespace
+cores_infrautilizadas_ns_query = f'sum by (namespace)((rate(container_cpu_usage_seconds_total{{container!="POD",container!=""}}[30m]) - on (namespace,pod,container) group_left avg by (namespace,pod,container)(kube_pod_container_resource_requests{{resource="cpu"}})) * -1 >0)'
+cores_infrautilizadas_ns = fetch_metrics(cores_infrautilizadas_ns_query)
+cores_infrautilizadas_ns_data = []
+
+# extraemos los valores de data iterando con values
+for value_ns in cores_infrautilizadas_ns:
+    namespace = value_ns["metric"]["namespace"]
+    cores = value_ns["value"]
+    cores_infrautilizadas_ns_data.append([namespace,cores])
+
+print("En proceso: Carga del número de cores infrautilizadas a nivel de namespace: " )
+
+# Convertimos la info recogida en un DataFrame
+cores_ns_df = pd.DataFrame(cores_infrautilizadas_ns_data, columns=['Namespace','Número de cores Infrautilizadas'])
 
 # Funcion para cargar primero los namespaces y despues las metricas que queremos ejecutar
 def main():
@@ -139,7 +152,8 @@ def main():
                 cpu_limits = 0
 
             # Añadimos con la funcion append
-            all_data.append([namespace, pod, container, memory_usage_total, cpu_usage_total, memory_requests, memory_limits, cpu_requests, cpu_limits])
+            all_data.append([namespace, pod, container, float(memory_usage_total), "{:.4f}".format(float(cpu_usage_total)),
+                             memory_requests, memory_limits, cpu_requests, cpu_limits])
 
     # Convertimos la info recogida en un DataFrame
     df = pd.DataFrame(all_data, columns=['Namespace', 'Pod', 'Container', 'Memory Usage Total', 'CPU Usage Total',
@@ -153,6 +167,7 @@ def main():
         df2.to_excel(writer, sheet_name='Total Metricas')
         quotas_df.to_excel(writer, sheet_name='Ns sin Quota')
         cores_df.to_excel(writer, sheet_name='Nº Cores Infrautilizadas')
+        cores_ns_df.to_excel(writer, sheet_name='Nº Cores Infrautilizadas NS')
 
 if __name__ == '__main__':
     main()
