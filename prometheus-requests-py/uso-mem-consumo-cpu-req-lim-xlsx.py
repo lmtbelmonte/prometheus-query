@@ -18,7 +18,6 @@ import requests
 import urllib3
 urllib3.disable_warnings()
 import os
-import time
 import pandas as pd
 
 # cargamos la url de la ruta prometheus de la variable de entorno 
@@ -26,7 +25,6 @@ prometheus_url = os.environ['PROMETHEUS_URL']
 
 # cargamos la url de la ruta prometheus de la variable de entorno 
 token = os.environ['TOKEN']
-
 
 # Funcion para hacer la llamada al API con los parametros
 def fetch_metrics(query):
@@ -58,18 +56,17 @@ for value in namespaces_sin_quota:
 print("En proceso: Carga de los Namespaces sin quota: " )
 
 # Convertimos la info recogida en un DataFrame
-quotas_df = pd.DataFrame(quota_data, columns=['Namespaces sin Quota'])
+quotas_df = pd.DataFrame(quota_data,columns=['Namespaces sin Quota'])
 
 # Numero de CPU/cores infrautilizadas en el cluster
 cores_infrautilizadas_query = f'sum((rate(container_cpu_usage_seconds_total{{container!="POD", container!=""}}[30m])- on (namespace, pod, container) group_left avg by (namespace, pod, container) (kube_pod_container_resource_requests{{resource="cpu"}})) * -1 >0)'
 cores_infrautilizadas = fetch_metrics(cores_infrautilizadas_query)
 cores_infrautilizadas_data = []
 
-
 # extraemos los valores de data iterando con values
 for value in cores_infrautilizadas:
-    cores = value["value"]
-    cores_infrautilizadas_data.append([cores])
+    cores = value["value"][1]
+    cores_infrautilizadas_data.append(["{:.4f}".format(float(cores))])
 
 print("En proceso: Carga del número de cores infrautilizadas a nivel de cluster " )
 
@@ -84,15 +81,46 @@ cores_infrautilizadas_ns_data = []
 # extraemos los valores de data iterando con values
 for value_ns in cores_infrautilizadas_ns:
     namespace = value_ns["metric"]["namespace"]
-    cores = value_ns["value"]
-    cores_infrautilizadas_ns_data.append([namespace,cores])
+    cores = value_ns["value"][1]
+    cores_infrautilizadas_ns_data.append([namespace,"{:.4f}".format(float(cores))])
 
 print("En proceso: Carga del número de cores infrautilizadas a nivel de namespace: " )
 
 # Convertimos la info recogida en un DataFrame
-cores_ns_df = pd.DataFrame(cores_infrautilizadas_ns_data, columns=['Namespace','Número de cores Infrautilizadas'])
+cores_ns_df = pd.DataFrame(cores_infrautilizadas_ns_data, columns=['Namespace','Número de cores Infrautilizadas NS'])
 
-# Funcion para cargar primero los namespaces y despues las metricas que queremos ejecutar
+# Total Memoria infrautilizada en el cluster
+memoria_infrautilizada_query = f'sum((container_memory_usage_bytes{{container!="POD", container!=""}} - on (namespace, pod, container) avg by (namespace, pod, container) (kube_pod_container_resource_requests{{resource="memory"}})) * -1 >0) / (1024*1024*1024)'
+memoria_infrautilizada = fetch_metrics(memoria_infrautilizada_query)
+memoria_infrautilizada_data = []
+
+# extraemos los valores de data iterando con values
+for value_mem in memoria_infrautilizada:
+    memoria = value_mem["value"][1]
+    memoria_infrautilizada_data.append([memoria])
+
+print("En proceso: Carga del Total Memoria infrautilizada a nivel de cluster " )
+
+# Convertimos la info recogida en un DataFrame
+memoria_df = pd.DataFrame(memoria_infrautilizada_data, columns=['Memoria en GB Infrautilizada Cluster'])
+
+# Total Memoria infrautilizada en el cluster por namespace
+memoria_infrautilizada_ns_query = f'sum by (namespace) ((container_memory_usage_bytes{{container!="POD", container!=""}} - on (namespace, pod, container) avg by (namespace, pod, container) (kube_pod_container_resource_requests{{resource="memory"}})) * -1 >0) / (1024*1024*1024)'
+memoria_infrautilizada_ns = fetch_metrics(memoria_infrautilizada_ns_query)
+memoria_infrautilizada_ns_data = []
+
+# extraemos los valores de data iterando con values
+for value_mem_ns in memoria_infrautilizada_ns:
+    namespace = value_mem_ns["metric"]["namespace"]
+    memoria_ns = value_mem_ns["value"][1]
+    memoria_infrautilizada_ns_data.append([namespace, memoria_ns])
+
+print("En proceso: Carga del Total Memoria infrautilizada a nivel de Namespace " )
+
+# Convertimos la info recogida en un DataFrame
+memoria_ns_df = pd.DataFrame(memoria_infrautilizada_ns_data, columns=['Memoria en GB Infrautilizada NS'])
+
+# Función para cargar primero los namespaces y despues las metricas que queremos ejecutar
 def main():
     namespaces = fetch_metrics('label_replace(kube_pod_info, "namespace", "$1", "namespace", "(.*)")')
     all_data = []
@@ -164,10 +192,12 @@ def main():
 
     # Escribimos directamente a CSV y excel
     with pd.ExcelWriter('/tmp/metrics_data.xlsx') as writer:
-        df2.to_excel(writer, sheet_name='Total Metricas')
+        df2.to_excel(writer, sheet_name='Total Metricas Req y limits')
         quotas_df.to_excel(writer, sheet_name='Ns sin Quota')
         cores_df.to_excel(writer, sheet_name='Nº Cores Infrautilizadas')
         cores_ns_df.to_excel(writer, sheet_name='Nº Cores Infrautilizadas NS')
+        memoria_df.to_excel(writer, sheet_name='Total Memoria Infrautilizada')
+        memoria_ns_df.to_excel(writer, sheet_name='Total Memoria Infrautilizada NS')
 
 if __name__ == '__main__':
     main()
