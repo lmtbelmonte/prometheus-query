@@ -18,6 +18,7 @@
 import requests
 import urllib3
 urllib3.disable_warnings()
+import time
 import os
 import pandas as pd
 
@@ -60,7 +61,9 @@ print("En proceso: Carga de los Namespaces sin quota: " )
 quotas_df = pd.DataFrame(quota_data,columns=['Namespaces sin Quota'])
 
 # Numero de CPU/cores infrautilizadas en el cluster
-cores_infrautilizadas_query = f'sum((rate(container_cpu_usage_seconds_total{{container!="POD", container!=""}}[30m])- on (namespace, pod, container) group_left avg by (namespace, pod, container) (kube_pod_container_resource_requests{{resource="cpu"}})) * -1 >0)'
+cores_infrautilizadas_query = (f'sum((rate(container_cpu_usage_seconds_total{{container!="POD", container!=""}}[30m])'
+                               f'- on (namespace, pod, container) group_left avg by (namespace, pod, container) '
+                               f'(kube_pod_container_resource_requests{{resource="cpu"}})) * -1 >0)')
 cores_infrautilizadas = fetch_metrics(cores_infrautilizadas_query)
 cores_infrautilizadas_data = []
 
@@ -75,7 +78,9 @@ print("En proceso: Carga del número de cores infrautilizadas a nivel de cluster
 cores_df = pd.DataFrame(cores_infrautilizadas_data, columns=['Numero de cores Infrautilizadas'])
 
 # Numero de CPU/cores infrautilizadas por namespace
-cores_infrautilizadas_ns_query = f'sum by (namespace)((rate(container_cpu_usage_seconds_total{{container!="POD",container!=""}}[30m]) - on (namespace,pod,container) group_left avg by (namespace,pod,container)(kube_pod_container_resource_requests{{resource="cpu"}})) * -1 >0)'
+cores_infrautilizadas_ns_query = (f'sum by (namespace)((rate(container_cpu_usage_seconds_total{{container!="POD",container!=""}}[30m])'
+                                  f' - on (namespace,pod,container) group_left avg by (namespace,pod,container)'
+                                  f'(kube_pod_container_resource_requests{{resource="cpu"}})) * -1 >0)')
 cores_infrautilizadas_ns = fetch_metrics(cores_infrautilizadas_ns_query)
 cores_infrautilizadas_ns_data = []
 
@@ -91,14 +96,16 @@ print("En proceso: Carga del número de cores infrautilizadas a nivel de namespa
 cores_ns_df = pd.DataFrame(cores_infrautilizadas_ns_data, columns=['Namespace','Número de cores Infrautilizadas NS'])
 
 # Total Memoria infrautilizada en el cluster
-memoria_infrautilizada_query = f'sum((container_memory_usage_bytes{{container!="POD", container!=""}} - on (namespace, pod, container) avg by (namespace, pod, container) (kube_pod_container_resource_requests{{resource="memory"}})) * -1 >0) / (1024*1024*1024)'
+memoria_infrautilizada_query = (f'sum((container_memory_usage_bytes{{container!="POD", container!=""}} '
+                                f'- on (namespace, pod, container) avg by (namespace, pod, container) '
+                                f'(kube_pod_container_resource_requests{{resource="memory"}})) * -1 >0) / (1024*1024*1024)')
 memoria_infrautilizada = fetch_metrics(memoria_infrautilizada_query)
 memoria_infrautilizada_data = []
 
 # extraemos los valores de data iterando con values
 for value_mem in memoria_infrautilizada:
     memoria = value_mem["value"][1]
-    memoria_infrautilizada_data.append([memoria])
+    memoria_infrautilizada_data.append(["{:.4f}".format(float(memoria))])
 
 print("En proceso: Carga del Total Memoria infrautilizada a nivel de cluster " )
 
@@ -106,7 +113,9 @@ print("En proceso: Carga del Total Memoria infrautilizada a nivel de cluster " )
 memoria_df = pd.DataFrame(memoria_infrautilizada_data, columns=['Memoria en GB Infrautilizada Cluster'])
 
 # Total Memoria infrautilizada en el cluster por namespace
-memoria_infrautilizada_ns_query = f'sum by (namespace) ((container_memory_usage_bytes{{container!="POD", container!=""}} - on (namespace, pod, container) avg by (namespace, pod, container) (kube_pod_container_resource_requests{{resource="memory"}})) * -1 >0) / (1024*1024*1024)'
+memoria_infrautilizada_ns_query = (f'sum by (namespace) ((container_memory_usage_bytes{{container!="POD", container!=""}}'
+                                   f' - on (namespace, pod, container) avg by (namespace, pod, container) '
+                                   f'(kube_pod_container_resource_requests{{resource="memory"}})) * -1 >0) / (1024*1024*1024)')
 memoria_infrautilizada_ns = fetch_metrics(memoria_infrautilizada_ns_query)
 memoria_infrautilizada_ns_data = []
 
@@ -114,12 +123,32 @@ memoria_infrautilizada_ns_data = []
 for value_mem_ns in memoria_infrautilizada_ns:
     namespace = value_mem_ns["metric"]["namespace"]
     memoria_ns = value_mem_ns["value"][1]
-    memoria_infrautilizada_ns_data.append([namespace, memoria_ns])
+    memoria_infrautilizada_ns_data.append([namespace, "{:.4f}".format(float(memoria_ns))])
 
 print("En proceso: Carga del Total Memoria infrautilizada a nivel de Namespace " )
 
 # Convertimos la info recogida en un DataFrame
 memoria_ns_df = pd.DataFrame(memoria_infrautilizada_ns_data, columns=['Namespace','Memoria en GB Infrautilizada NS'])
+
+# Top 10 containers con memoria infrautilizada
+top10_containers_infra_query = (f'topk(10,sum by (namespace,pod,container)((container_memory_usage_bytes{{container!="POD",container!=""}}'
+                                f' - on (namespace,pod,container) avg by (namespace,pod,container)'
+                                f'(kube_pod_container_resource_requests{{resource="memory"}})) * -1 >0 ) / (1024*1024*1024)')
+top10_containers_infra = fetch_metrics(top10_containers_infra_query)
+top10_containers_infra_data = []
+
+# extraemos los valores de data iterando con values
+for value_top in top10_containers_infra:
+    container_top = value_top["metric"]["container"]
+    namespace_top = value_top["metric"]["namespace"]
+    pod_top = value_top["metric"]["pod"]
+    memory_top = value_top["value"][1]
+    top10_containers_infra_data.append([container_top,namespace_top,pod_top,"{:.4f}".format(float(memory_top))])
+
+print("En proceso: Carga de los Top 10 containers sobredimensionados:")
+
+# Convertimos la info recogida en un DataFrame
+top10_df = pd.DataFrame(top10_containers_infra_data, columns=['Container','Namespace','Pod', 'memoria sobrediimensionada'])
 
 # Función para cargar primero los namespaces y despues las metricas que queremos ejecutar
 def main():
@@ -181,8 +210,8 @@ def main():
                 cpu_limits = 0
 
             # Añadimos con la funcion append
-            all_data.append([namespace, pod, container, float(memory_usage_total), "{:.4f}".format(float(cpu_usage_total)),
-                             memory_requests, memory_limits, cpu_requests, cpu_limits])
+            all_data.append([namespace, pod, container, "{:,}".format(float(memory_usage_total)), "{:.4f}".format(float(cpu_usage_total)),
+                             "{:,}".format(float(memory_requests)), "{:,}".format(float(memory_limits)), float(cpu_requests), float(cpu_limits)])
 
     # Convertimos la info recogida en un DataFrame
     df = pd.DataFrame(all_data, columns=['Namespace', 'Pod', 'Container', 'Memory Usage Total', 'CPU Usage Total',
@@ -199,6 +228,7 @@ def main():
         cores_ns_df.to_excel(writer, sheet_name='Nº Cores Infrautilizadas NS')
         memoria_df.to_excel(writer, sheet_name='Total Memoria Infrautilizada')
         memoria_ns_df.to_excel(writer, sheet_name='Total Memoria Infrautilizada NS')
+        top10_df.to_excel(writer, sheet_name='TOP 10 Containers Sobredimensinados')
 
 if __name__ == '__main__':
     main()
